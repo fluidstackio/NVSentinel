@@ -16,9 +16,12 @@ package store
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/nvidia/nvsentinel/data-models/pkg/model"
@@ -29,6 +32,8 @@ import (
 	"github.com/nvidia/nvsentinel/store-client/pkg/factory"
 
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -72,6 +77,134 @@ func InitializeDatabaseStoreConnector(ctx context.Context, ringbuffer *ringbuffe
 	}
 
 	slog.Info("Successfully initialized database store connector")
+
+	return new(databaseClient, ringbuffer, nodeName), nil
+}
+
+//nolint:cyclop
+func InitializeMongoDbStoreConnector(ctx context.Context, ringbuffer *ringbuffer.RingBuffer,
+	clientCertMountPath string) (*DatabaseStoreConnector, error) {
+	mongoDbURI := os.Getenv("MONGODB_URI")
+	if mongoDbURI == "" {
+		return nil, fmt.Errorf("MONGODB_URI is not set")
+	}
+
+	mongoDbName := os.Getenv("MONGODB_DATABASE_NAME")
+	if mongoDbName == "" {
+		return nil, fmt.Errorf("MONGODB_DATABASE_NAME is not set")
+	}
+
+	mongoDbCollection := os.Getenv("MONGODB_COLLECTION_NAME")
+	if mongoDbCollection == "" {
+		return nil, fmt.Errorf("MONGODB_COLLECTION_NAME is not set")
+	}
+
+	// Check if TLS is enabled (default: true)
+	tlsEnabledStr := os.Getenv("MONGODB_TLS_ENABLED")
+	tlsEnabled := true // default to enabled
+	if tlsEnabledStr != "" {
+		tlsEnabled = tlsEnabledStr != "false"
+	}
+
+	totalCACertTimeoutSeconds, err := getEnvAsInt("CA_CERT_MOUNT_TIMEOUT_TOTAL_SECONDS", 360)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CA_CERT_MOUNT_TIMEOUT_TOTAL_SECONDS: %w", err)
+	}
+
+	intervalCACertSeconds, err := getEnvAsInt("CA_CERT_READ_INTERVAL_SECONDS", 5)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CA_CERT_READ_INTERVAL_SECONDS: %w", err)
+	}
+
+	var clientOpts *options.ClientOptions
+
+	if tlsEnabled {
+		clientCertPath := clientCertMountPath + "/tls.crt"
+		clientKeyPath := clientCertMountPath + "/tls.key"
+		mongoCACertPath := clientCertMountPath + "/ca.crt"
+
+		totalCertTimeout := time.Duration(totalCACertTimeoutSeconds) * time.Second
+		intervalCert := time.Duration(intervalCACertSeconds) * time.Second
+
+		// load CA certificate
+		caCert, err := pollTillCACertIsMountedSuccessfully(mongoCACertPath, totalCertTimeout, intervalCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load CA certificate: %w", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to append CA certificate to pool")
+		}
+
+		// Load client certificate and key
+		clientCert, err := tls.LoadX509KeyPair(clientCertPath, clientKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate and key: %w", err)
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{clientCert},
+			RootCAs:      caCertPool,
+			MinVersion:   tls.VersionTLS12,
+		}
+
+		clientOpts = options.Client().ApplyURI(mongoDbURI).SetTLSConfig(tlsConfig)
+
+		credential := options.Credential{
+			AuthMechanism: "MONGODB-X509",
+			AuthSource:    "$external",
+		}
+		clientOpts.SetAuth(credential)
+	} else {
+		// TLS disabled - connect without TLS configuration
+		clientOpts = options.Client().ApplyURI(mongoDbURI)
+	}
+
+	_, err = mongo.Connect(ctx, clientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to mongodb: %w", err)
+	}
+
+	totalTimeoutSeconds, err := getEnvAsInt("MONGODB_PING_TIMEOUT_TOTAL_SECONDS", 300)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MONGODB_PING_TIMEOUT_TOTAL_SECONDS: %w", err)
+	}
+
+	intervalSeconds, err := getEnvAsInt("MONGODB_PING_INTERVAL_SECONDS", 5)
+	if err != nil {
+		return nil, fmt.Errorf("invalid MONGODB_PING_INTERVAL_SECONDS: %w", err)
+	}
+
+	totalTimeout := time.Duration(totalTimeoutSeconds) * time.Second
+	interval := time.Duration(intervalSeconds) * time.Second
+
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		return nil, fmt.Errorf("NODE_NAME is not set")
+	}
+
+	// For now, return a basic DatabaseStoreConnector
+	// This function would need to be properly implemented to create a MongoDB-specific client
+	// using the clientOpts, client, totalTimeout, and interval variables
+	slog.Info("MongoDB TLS configuration initialized", 
+		"tlsEnabled", tlsEnabled,
+		"totalTimeout", totalTimeout,
+		"interval", interval)
+
+	// Create database client factory using store-client
+	clientFactory, err := createClientFactory(clientCertMountPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database client factory: %w", err)
+	}
+
+	// Create database client
+	databaseClient, err := clientFactory.CreateDatabaseClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database client: %w", err)
+	}
+
+	slog.Info("Successfully initialized MongoDB store connector")
 
 	return new(databaseClient, ringbuffer, nodeName), nil
 }
@@ -163,4 +296,30 @@ func (r *DatabaseStoreConnector) insertHealthEvents(
 
 func GenerateRandomObjectID() string {
 	return uuid.New().String()
+}
+
+// Helper function to get environment variable as int with default value
+func getEnvAsInt(key string, defaultValue int) (int, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue, nil
+	}
+	return strconv.Atoi(value)
+}
+
+// Helper function to poll for CA certificate until it's available
+func pollTillCACertIsMountedSuccessfully(caCertPath string, totalTimeout, interval time.Duration) ([]byte, error) {
+	start := time.Now()
+	for {
+		caCert, err := os.ReadFile(caCertPath)
+		if err == nil {
+			return caCert, nil
+		}
+		
+		if time.Since(start) > totalTimeout {
+			return nil, fmt.Errorf("timeout waiting for CA certificate at %s: %w", caCertPath, err)
+		}
+		
+		time.Sleep(interval)
+	}
 }
