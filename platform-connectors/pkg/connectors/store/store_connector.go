@@ -80,9 +80,14 @@ func InitializeMongoDbStoreConnector(ctx context.Context, ringbuffer *ringbuffer
 	// Check if TLS is enabled (default: true)
 	tlsEnabledStr := os.Getenv("MONGODB_TLS_ENABLED")
 	tlsEnabled := true // default to enabled
-	if tlsEnabledStr != "" {
-		tlsEnabled = tlsEnabledStr != "false"
+	if tlsEnabledStr == "false" {
+		tlsEnabled = false
 	}
+
+	slog.Info("TLS configuration", 
+		"os.Getenv_result", os.Getenv("MONGODB_TLS_ENABLED"), 
+		"tlsEnabledStr", tlsEnabledStr, 
+		"tlsEnabled", tlsEnabled)
 
 	totalCACertTimeoutSeconds, err := getEnvAsInt("CA_CERT_MOUNT_TIMEOUT_TOTAL_SECONDS", 360)
 	if err != nil {
