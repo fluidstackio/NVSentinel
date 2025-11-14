@@ -140,8 +140,16 @@ func InitializeMongoDbStoreConnector(ctx context.Context, ringbuffer *ringbuffer
 		}
 		clientOpts.SetAuth(credential)
 	} else {
-		// TLS disabled - connect without TLS configuration
+		// TLS disabled - use hardcoded username/password authentication
 		clientOpts = options.Client().ApplyURI(mongoDbURI)
+		
+		credential := options.Credential{
+			Username:   "root",
+			Password:   "5FvYRx2jf1iLiZoQI76aHbwkFbPb05M3",
+			AuthSource: "admin",
+		}
+		clientOpts.SetAuth(credential)
+		slog.Info("MongoDB authentication configured with hardcoded credentials")
 	}
 
 	client, err := mongo.Connect(ctx, clientOpts)
