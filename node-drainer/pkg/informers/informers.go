@@ -464,7 +464,7 @@ func (i *Informers) UpdateNodeEvent(ctx context.Context, nodeName string, reason
 
 	_, err = eventsClient.Create(ctx, newEvent, metav1.CreateOptions{})
 	if err != nil {
-		slog.Error("Failed to create event", "error", err)
+		slog.Error("Failed to create event", "error", err, "node", nodeName, "reason", reason)
 		return fmt.Errorf("error in creating event: %w", err)
 	}
 
