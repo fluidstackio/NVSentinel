@@ -583,15 +583,31 @@ func constructMongoClientOptions(
 	
 	// Check if TLS is enabled first
 	if !tlsEnabled {
-		// TLS disabled - return basic client options without TLS configuration
+		// TLS disabled - use username/password authentication from environment variables
 		serverSelectionTimeout := time.Duration(mongoConfig.TotalPingTimeoutSeconds) * time.Second
 		if serverSelectionTimeout == 0 {
 			serverSelectionTimeout = 300 * time.Second // 5 minutes default
 		}
 		
-		return options.Client().
+		clientOpts := options.Client().
 			ApplyURI(mongoConfig.URI).
-			SetServerSelectionTimeout(serverSelectionTimeout), nil
+			SetServerSelectionTimeout(serverSelectionTimeout)
+		
+		// Add username/password authentication if credentials are provided
+		username := os.Getenv("MONGODB_USERNAME")
+		password := os.Getenv("MONGODB_PASSWORD")
+		
+		if username != "" && password != "" {
+			credential := options.Credential{
+				Username:   username,
+				Password:   password,
+				AuthSource: "admin", // Root user is always in admin database
+			}
+			clientOpts.SetAuth(credential)
+			slog.Info("MongoDB authentication configured from environment variables", "username", username, "authSource", "admin")
+		}
+		
+		return clientOpts, nil
 	}
 
 	// TLS is enabled - proceed with certificate setup
