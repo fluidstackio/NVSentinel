@@ -49,6 +49,7 @@ type MongoDBConfig struct {
 	URI                              string
 	Database                         string
 	Collection                       string
+	TLSEnabled                       bool
 	ClientTLSCertConfig              MongoDBClientTLSCertConfig
 	TotalPingTimeoutSeconds          int
 	TotalPingIntervalSeconds         int
@@ -569,6 +570,31 @@ func GetCollectionClient(
 func constructMongoClientOptions(
 	mongoConfig MongoDBConfig,
 ) (*options.ClientOptions, error) {
+	// Check TLS enabled from environment variable (consistent with storewatcher implementation)
+	tlsEnabledStr := os.Getenv("MONGODB_TLS_ENABLED")
+	tlsEnabled := true // default to enabled for backward compatibility
+	if tlsEnabledStr == "false" {
+		tlsEnabled = false
+	}
+
+	slog.Info("TLS configuration", 
+		"MONGODB_TLS_ENABLED_env", tlsEnabledStr, 
+		"tlsEnabled", tlsEnabled)
+	
+	// Check if TLS is enabled first
+	if !tlsEnabled {
+		// TLS disabled - return basic client options without TLS configuration
+		serverSelectionTimeout := time.Duration(mongoConfig.TotalPingTimeoutSeconds) * time.Second
+		if serverSelectionTimeout == 0 {
+			serverSelectionTimeout = 300 * time.Second // 5 minutes default
+		}
+		
+		return options.Client().
+			ApplyURI(mongoConfig.URI).
+			SetServerSelectionTimeout(serverSelectionTimeout), nil
+	}
+
+	// TLS is enabled - proceed with certificate setup
 	timeout := mongoConfig.TotalCACertTimeoutSeconds
 	if timeout == 0 {
 		timeout = 600 // 10 minutes by default
