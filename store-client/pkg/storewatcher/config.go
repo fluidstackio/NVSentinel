@@ -33,9 +33,6 @@ type MongoDBConfig struct {
 	Collection          string                     `env:"MONGODB_COLLECTION_NAME,required"`
 	TLSEnabled          bool                       `env:"MONGODB_TLS_ENABLED" envDefault:"true"`
 	ClientTLSCertConfig MongoDBClientTLSCertConfig `envPrefix:""`
-	Username            string                     `env:"MONGODB_USERNAME"`
-	Password            string                     `env:"MONGODB_PASSWORD"`
-	AuthSource          string                     `env:"MONGODB_AUTH_SOURCE" envDefault:"admin"`
 
 	TotalPingTimeoutSeconds  int `env:"MONGODB_PING_TIMEOUT_TOTAL_SECONDS" envDefault:"300"` //nolint:lll
 	TotalPingIntervalSeconds int `env:"MONGODB_PING_INTERVAL_SECONDS" envDefault:"5"`        //nolint:lll
