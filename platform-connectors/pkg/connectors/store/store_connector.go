@@ -162,31 +162,9 @@ func InitializeMongoDbStoreConnector(ctx context.Context, ringbuffer *ringbuffer
 		}
 		clientOpts.SetAuth(credential)
 	} else {
-		// TLS disabled - use username/password authentication from environment variables
+		// TLS disabled - no authentication
 		clientOpts = options.Client().ApplyURI(mongoDbURI)
-		
-		mongoDbUsername := os.Getenv("MONGODB_USERNAME")
-		if mongoDbUsername == "" {
-			return nil, fmt.Errorf("MONGODB_USERNAME is not set")
-		}
-
-		mongoDbPassword := os.Getenv("MONGODB_PASSWORD")
-		if mongoDbPassword == "" {
-			return nil, fmt.Errorf("MONGODB_PASSWORD is not set")
-		}
-
-		mongoDbAuthSource := os.Getenv("MONGODB_AUTH_SOURCE")
-		if mongoDbAuthSource == "" {
-			mongoDbAuthSource = "admin" // default auth source
-		}
-
-		credential := options.Credential{
-			Username:   mongoDbUsername,
-			Password:   mongoDbPassword,
-			AuthSource: mongoDbAuthSource,
-		}
-		clientOpts.SetAuth(credential)
-		slog.Info("MongoDB authentication configured from environment variables", "username", mongoDbUsername, "authSource", mongoDbAuthSource)
+		slog.Info("MongoDB authentication disabled - TLS disabled")
 	}
 
 	_, err = mongo.Connect(ctx, clientOpts)

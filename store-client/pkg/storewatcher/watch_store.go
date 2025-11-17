@@ -517,24 +517,9 @@ func constructMongoClientOptions(
 		}
 		clientOpts.SetAuth(credential)
 	} else {
-		// TLS disabled - use username/password authentication from environment variables
+		// TLS disabled - no authentication
 		clientOpts = options.Client().ApplyURI(mongoConfig.URI)
-		
-		if mongoConfig.Username == "" {
-			return nil, fmt.Errorf("MONGODB_USERNAME is required when TLS is disabled")
-		}
-
-		if mongoConfig.Password == "" {
-			return nil, fmt.Errorf("MONGODB_PASSWORD is required when TLS is disabled")
-		}
-
-		credential := options.Credential{
-			Username:   mongoConfig.Username,
-			Password:   mongoConfig.Password,
-			AuthSource: mongoConfig.AuthSource,
-		}
-		clientOpts.SetAuth(credential)
-		slog.Info("MongoDB authentication configured from environment variables", "username", mongoConfig.Username, "authSource", mongoConfig.AuthSource)
+		slog.Info("MongoDB authentication disabled - TLS disabled")
 	}
 
 	return clientOpts, nil
