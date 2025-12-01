@@ -598,7 +598,11 @@ func constructMongoClientOptions(
 	}
 
 	// Check if we're in DocumentDB mode (only CA cert needed, no client certificates)
-	isDocumentDBMode := os.Getenv(config.EnvMongoDBCACertPath) != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
+	envVar := os.Getenv(config.EnvMongoDBCACertPath)
+	fmt.Printf("DEBUG: constructMongoClientOptions MONGODB_CA_CERT_PATH='%s'\n", envVar)
+	fmt.Printf("DEBUG: constructMongoClientOptions TlsCertPath='%s' TlsKeyPath='%s'\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+	isDocumentDBMode := envVar != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
+	fmt.Printf("DEBUG: constructMongoClientOptions isDocumentDBMode=%t\n", isDocumentDBMode)
 	
 	var tlsConfig *tls.Config
 	

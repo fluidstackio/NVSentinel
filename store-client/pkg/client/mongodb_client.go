@@ -710,11 +710,27 @@ func (c *MongoDBClient) NewChangeStreamWatcher(ctx context.Context, tokenConfig 
 		Collection: c.collection,
 		// Add TLS certificate configuration from the client's config
 		// For DocumentDB mode, only set CA cert path, not client cert paths
-		ClientTLSCertConfig: mongoWatcher.MongoDBClientTLSCertConfig{
-			TlsCertPath: "", // Force DocumentDB mode for testing
-			TlsKeyPath:  "", // Force DocumentDB mode for testing  
-			CaCertPath:  c.config.GetCertConfig().GetCACertPath(),
-		},
+		ClientTLSCertConfig: func() mongoWatcher.MongoDBClientTLSCertConfig {
+			envVar := os.Getenv("MONGODB_CA_CERT_PATH")
+			fmt.Printf("DEBUG: NewChangeStreamWatcher MONGODB_CA_CERT_PATH='%s'\n", envVar)
+			if envVar != "" {
+				// DocumentDB mode: Only CA certificate needed
+				fmt.Printf("DEBUG: NewChangeStreamWatcher using DocumentDB mode (empty cert paths)\n")
+				return mongoWatcher.MongoDBClientTLSCertConfig{
+					TlsCertPath: "", // No client certificate for DocumentDB
+					TlsKeyPath:  "", // No client key for DocumentDB  
+					CaCertPath:  c.config.GetCertConfig().GetCACertPath(),
+				}
+			} else {
+				// Traditional MongoDB mode: All certificates needed
+				fmt.Printf("DEBUG: NewChangeStreamWatcher using traditional MongoDB mode\n")
+				return mongoWatcher.MongoDBClientTLSCertConfig{
+					TlsCertPath: c.config.GetCertConfig().GetCertPath(),
+					TlsKeyPath:  c.config.GetCertConfig().GetKeyPath(),
+					CaCertPath:  c.config.GetCertConfig().GetCACertPath(),
+				}
+			}
+		}(),
 		// Copy timeout settings from client (these should be available from config)
 		TotalPingTimeoutSeconds:          c.config.GetTimeoutConfig().GetPingTimeoutSeconds(),
 		TotalPingIntervalSeconds:         c.config.GetTimeoutConfig().GetPingIntervalSeconds(),
