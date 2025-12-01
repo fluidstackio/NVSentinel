@@ -501,8 +501,9 @@ func constructMongoClientOptions(
 	if isDocumentDBMode {
 		// DocumentDB mode: Only CA certificate, no client certificates, use username/password auth
 		tlsConfig = &tls.Config{
-			RootCAs:    caCertPool,
-			MinVersion: tls.VersionTLS12,
+			RootCAs:            caCertPool,
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, // Allow invalid hostnames for DocumentDB proxy connections
 		}
 		
 		// DocumentDB uses username/password authentication (credentials will come from URI)
