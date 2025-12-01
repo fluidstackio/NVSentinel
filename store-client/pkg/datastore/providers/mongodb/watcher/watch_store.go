@@ -631,10 +631,13 @@ func constructMongoClientOptions(
 // then falls back to the standard ca.crt path in the certificate mount directory for backward compatibility.
 func resolveCACertPathForMongoWatcher(certMountPath string) string {
 	if explicit := os.Getenv(config.EnvMongoDBCACertPath); explicit != "" {
+		fmt.Printf("INFO: [MongoWatcher] Using DocumentDB mode with CA certificate path: %s\n", explicit)
 		return explicit
 	}
 	// Backward-compatible default: ca.crt in the mount path
-	return filepath.Join(certMountPath, "ca.crt")
+	defaultPath := filepath.Join(certMountPath, "ca.crt")
+	fmt.Printf("INFO: [MongoWatcher] Using MongoDB mode with CA certificate path: %s\n", defaultPath)
+	return defaultPath
 }
 
 func ConstructClientTLSConfig(
