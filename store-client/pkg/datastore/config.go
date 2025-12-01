@@ -132,6 +132,15 @@ func setMongoDBTLSDefaults(config *DataStoreConfig) {
 	keyPath := os.Getenv("MONGODB_CLIENT_KEY_PATH")
 	caPath := os.Getenv("MONGODB_CA_CERT_PATH")
 
+	// DocumentDB mode: Only CA certificate is needed, no client certificates
+	if caPath != "" && certPath == "" && keyPath == "" {
+		config.Connection.TLSConfig = &TLSConfig{
+			CAPath: caPath,
+		}
+		return
+	}
+
+	// Traditional MongoDB mode: All certificates required
 	if certPath != "" && keyPath != "" && caPath != "" {
 		config.Connection.TLSConfig = &TLSConfig{
 			CertPath: certPath,
