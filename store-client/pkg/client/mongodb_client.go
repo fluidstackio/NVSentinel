@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 
@@ -322,15 +323,29 @@ type MongoDBCollectionClient struct {
 // NewMongoDBClient creates a new MongoDB client from database configuration
 func NewMongoDBClient(ctx context.Context, dbConfig config.DatabaseConfig) (*MongoDBClient, error) {
 	// Convert to the existing MongoDBConfig format for backward compatibility
-	mongoConfig := mongoWatcher.MongoDBConfig{
-		URI:        dbConfig.GetConnectionURI(),
-		Database:   dbConfig.GetDatabaseName(),
-		Collection: dbConfig.GetCollectionName(),
-		ClientTLSCertConfig: mongoWatcher.MongoDBClientTLSCertConfig{
+	// For DocumentDB mode, only set CA cert path, not client cert paths
+	var clientTLSConfig mongoWatcher.MongoDBClientTLSCertConfig
+	if os.Getenv("MONGODB_CA_CERT_PATH") != "" {
+		// DocumentDB mode: Only CA certificate needed
+		clientTLSConfig = mongoWatcher.MongoDBClientTLSCertConfig{
+			TlsCertPath: "", // No client certificate for DocumentDB
+			TlsKeyPath:  "", // No client key for DocumentDB  
+			CaCertPath:  dbConfig.GetCertConfig().GetCACertPath(),
+		}
+	} else {
+		// Traditional MongoDB mode: All certificates needed
+		clientTLSConfig = mongoWatcher.MongoDBClientTLSCertConfig{
 			TlsCertPath: dbConfig.GetCertConfig().GetCertPath(),
 			TlsKeyPath:  dbConfig.GetCertConfig().GetKeyPath(),
 			CaCertPath:  dbConfig.GetCertConfig().GetCACertPath(),
-		},
+		}
+	}
+	
+	mongoConfig := mongoWatcher.MongoDBConfig{
+		URI:                              dbConfig.GetConnectionURI(),
+		Database:                         dbConfig.GetDatabaseName(),
+		Collection:                       dbConfig.GetCollectionName(),
+		ClientTLSCertConfig:              clientTLSConfig,
 		TotalPingTimeoutSeconds:          dbConfig.GetTimeoutConfig().GetPingTimeoutSeconds(),
 		TotalPingIntervalSeconds:         dbConfig.GetTimeoutConfig().GetPingIntervalSeconds(),
 		TotalCACertTimeoutSeconds:        dbConfig.GetTimeoutConfig().GetCACertTimeoutSeconds(),
