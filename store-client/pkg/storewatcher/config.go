@@ -21,9 +21,9 @@ import (
 )
 
 type MongoDBClientTLSCertConfig struct {
-	TlsCertPath string `env:"MONGODB_CLIENT_CERT_PATH,required"`
-	TlsKeyPath  string `env:"MONGODB_CLIENT_KEY_PATH,required"`
-	CaCertPath  string `env:"MONGODB_CA_CERT_PATH,required"`
+	TlsCertPath string `env:"MONGODB_CLIENT_CERT_PATH"`        // Not required for DocumentDB mode
+	TlsKeyPath  string `env:"MONGODB_CLIENT_KEY_PATH"`         // Not required for DocumentDB mode
+	CaCertPath  string `env:"MONGODB_CA_CERT_PATH,required"`   // Always required
 }
 
 // MongoDBConfig holds the MongoDB connection configuration.
