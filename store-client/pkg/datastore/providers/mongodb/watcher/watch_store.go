@@ -597,33 +597,54 @@ func constructMongoClientOptions(
 		return nil, fmt.Errorf("failed to append CA certificate to pool")
 	}
 
-	// load client certificate and key
-	clientCert, err := tls.LoadX509KeyPair(mongoConfig.ClientTLSCertConfig.TlsCertPath,
-		mongoConfig.ClientTLSCertConfig.TlsKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load client certificate and key: %w", err)
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS12,
-	}
-
-	credential := options.Credential{
-		AuthMechanism: "MONGODB-X509",
-		AuthSource:    "$external",
-	}
-
+	// Check if we're in DocumentDB mode (only CA cert needed, no client certificates)
+	isDocumentDBMode := os.Getenv(config.EnvMongoDBCACertPath) != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
+	
+	var tlsConfig *tls.Config
+	
 	// Set server selection timeout to allow MongoDB time to become ready
 	// This uses the same timeout as the ping timeout for consistency
 	serverSelectionTimeout := time.Duration(mongoConfig.TotalPingTimeoutSeconds) * time.Second
+	
+	if isDocumentDBMode {
+		// DocumentDB mode: Only CA certificate, no client certificates, use username/password auth
+		tlsConfig = &tls.Config{
+			RootCAs:    caCertPool,
+			MinVersion: tls.VersionTLS12,
+		}
+		
+		// DocumentDB uses username/password authentication (credentials will come from URI)
+		// No explicit credential needed here as it's in the URI
+		
+		return options.Client().
+			ApplyURI(mongoConfig.URI).
+			SetTLSConfig(tlsConfig).
+			SetServerSelectionTimeout(serverSelectionTimeout), nil
+	} else {
+		// Traditional MongoDB mode: Client certificates required, use X509 auth
+		clientCert, err := tls.LoadX509KeyPair(mongoConfig.ClientTLSCertConfig.TlsCertPath,
+			mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate and key: %w", err)
+		}
 
-	return options.Client().
-		ApplyURI(mongoConfig.URI).
-		SetTLSConfig(tlsConfig).
-		SetAuth(credential).
-		SetServerSelectionTimeout(serverSelectionTimeout), nil
+		tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{clientCert},
+			RootCAs:      caCertPool,
+			MinVersion:   tls.VersionTLS12,
+		}
+
+		credential := options.Credential{
+			AuthMechanism: "MONGODB-X509",
+			AuthSource:    "$external",
+		}
+
+		return options.Client().
+			ApplyURI(mongoConfig.URI).
+			SetTLSConfig(tlsConfig).
+			SetAuth(credential).
+			SetServerSelectionTimeout(serverSelectionTimeout), nil
+	}
 }
 
 // resolveCACertPathForMongoWatcher returns the appropriate CA certificate path for MongoDB TLS configuration.
