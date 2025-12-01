@@ -55,6 +55,7 @@ const (
 	EnvMongoDBCollectionName                 = "MONGODB_COLLECTION_NAME"
 	EnvMongoDBTokenCollectionName            = "MONGODB_TOKEN_COLLECTION_NAME" // nolint:gosec
 	EnvMongoDBMaintenanceEventCollectionName = "MONGODB_MAINTENANCE_EVENT_COLLECTION_NAME"
+	EnvMongoDBCACertPath                     = "MONGODB_CA_CERT_PATH"
 	EnvMongoDBPingTimeoutTotalSeconds        = "MONGODB_PING_TIMEOUT_TOTAL_SECONDS"
 	EnvMongoDBPingIntervalSeconds            = "MONGODB_PING_INTERVAL_SECONDS"
 	EnvCACertMountTimeoutTotalSeconds        = "CA_CERT_MOUNT_TIMEOUT_TOTAL_SECONDS"
@@ -100,6 +101,17 @@ func GetCertMountPath() string {
 
 		return DefaultCertMountPath
 	}
+}
+
+// resolveCACertPath returns the appropriate CA certificate path for MongoDB TLS configuration.
+// It first checks for explicit MONGODB_CA_CERT_PATH environment variable (for DocumentDB/custom setups),
+// then falls back to the standard ca.crt path in the certificate mount directory for backward compatibility.
+func resolveCACertPath(certMountPath string) string {
+	if explicit := os.Getenv(EnvMongoDBCACertPath); explicit != "" {
+		return explicit
+	}
+	// Backward-compatible default: ca.crt in the mount path
+	return filepath.Join(certMountPath, "ca.crt")
 }
 
 // StandardDatabaseConfig implements DatabaseConfig for MongoDB with standard environment variables
@@ -219,7 +231,7 @@ func NewDatabaseConfigWithCollection(
 	certConfig := &StandardCertificateConfig{
 		certPath:   filepath.Join(certMountPath, "tls.crt"),
 		keyPath:    filepath.Join(certMountPath, "tls.key"),
-		caCertPath: filepath.Join(certMountPath, "ca.crt"),
+		caCertPath: resolveCACertPath(certMountPath),
 	}
 
 	return &StandardDatabaseConfig{

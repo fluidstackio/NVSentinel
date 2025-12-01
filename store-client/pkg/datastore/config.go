@@ -18,9 +18,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nvidia/nvsentinel/store-client/pkg/config"
 )
 
 // LoadDatastoreConfig loads datastore configuration from environment variables and YAML
@@ -118,7 +121,7 @@ func setMongoDBTLSDefaults(config *DataStoreConfig) {
 		config.Connection.TLSConfig = &TLSConfig{
 			CertPath: certMountPath + "/tls.crt",
 			KeyPath:  certMountPath + "/tls.key",
-			CAPath:   certMountPath + "/ca.crt",
+			CAPath:   resolveCACertPathForDatastore(certMountPath),
 		}
 
 		return
@@ -146,7 +149,7 @@ func setMongoDBTLSDefaults(config *DataStoreConfig) {
 		config.Connection.TLSConfig = &TLSConfig{
 			CertPath: legacyPath + "/tls.crt",
 			KeyPath:  legacyPath + "/tls.key",
-			CAPath:   legacyPath + "/ca.crt",
+			CAPath:   resolveCACertPathForDatastore(legacyPath),
 		}
 
 		slog.Info("Using legacy hardcoded certificate path for backward compatibility", "path", legacyPath)
@@ -157,6 +160,17 @@ func setMongoDBTLSDefaults(config *DataStoreConfig) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// resolveCACertPathForDatastore returns the appropriate CA certificate path for MongoDB TLS configuration.
+// It first checks for explicit MONGODB_CA_CERT_PATH environment variable (for DocumentDB/custom setups),
+// then falls back to the standard ca.crt path in the certificate mount directory for backward compatibility.
+func resolveCACertPathForDatastore(certMountPath string) string {
+	if explicit := os.Getenv(config.EnvMongoDBCACertPath); explicit != "" {
+		return explicit
+	}
+	// Backward-compatible default: ca.crt in the mount path
+	return filepath.Join(certMountPath, "ca.crt")
 }
 
 // setGenericPort sets port for unknown providers

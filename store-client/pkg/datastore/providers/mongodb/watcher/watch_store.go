@@ -33,6 +33,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
+
+	"github.com/nvidia/nvsentinel/store-client/pkg/config"
 )
 
 // Event represents a database-agnostic event that abstracts away provider-specific types
@@ -624,12 +626,23 @@ func constructMongoClientOptions(
 		SetServerSelectionTimeout(serverSelectionTimeout), nil
 }
 
+// resolveCACertPathForMongoWatcher returns the appropriate CA certificate path for MongoDB TLS configuration.
+// It first checks for explicit MONGODB_CA_CERT_PATH environment variable (for DocumentDB/custom setups),
+// then falls back to the standard ca.crt path in the certificate mount directory for backward compatibility.
+func resolveCACertPathForMongoWatcher(certMountPath string) string {
+	if explicit := os.Getenv(config.EnvMongoDBCACertPath); explicit != "" {
+		return explicit
+	}
+	// Backward-compatible default: ca.crt in the mount path
+	return filepath.Join(certMountPath, "ca.crt")
+}
+
 func ConstructClientTLSConfig(
 	totalCACertTimeoutSeconds int, intervalCACertSeconds int, clientCertMountPath string,
 ) (*tls.Config, error) {
 	clientCertPath := filepath.Join(clientCertMountPath, "tls.crt")
 	clientKeyPath := filepath.Join(clientCertMountPath, "tls.key")
-	mongoCACertPath := filepath.Join(clientCertMountPath, "ca.crt")
+	mongoCACertPath := resolveCACertPathForMongoWatcher(clientCertMountPath)
 
 	totalCertTimeout := time.Duration(totalCACertTimeoutSeconds) * time.Second
 	intervalCert := time.Duration(intervalCACertSeconds) * time.Second
