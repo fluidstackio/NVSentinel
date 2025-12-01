@@ -571,6 +571,8 @@ func GetCollectionClient(
 func constructMongoClientOptions(
 	mongoConfig MongoDBConfig,
 ) (*options.ClientOptions, error) {
+	fmt.Println("=== DATASTORE PROVIDER WATCHER constructMongoClientOptions CALLED ===")
+	fmt.Printf("=== TlsCertPath: %s, TlsKeyPath: %s ===\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
 	timeout := mongoConfig.TotalCACertTimeoutSeconds
 	if timeout == 0 {
 		timeout = 600 // 10 minutes by default
@@ -599,10 +601,9 @@ func constructMongoClientOptions(
 
 	// Check if we're in DocumentDB mode (only CA cert needed, no client certificates)
 	envVar := os.Getenv(config.EnvMongoDBCACertPath)
-	fmt.Printf("DEBUG: constructMongoClientOptions MONGODB_CA_CERT_PATH='%s'\n", envVar)
-	fmt.Printf("DEBUG: constructMongoClientOptions TlsCertPath='%s' TlsKeyPath='%s'\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+	slog.Info("DEBUG: constructMongoClientOptions", "MONGODB_CA_CERT_PATH", envVar, "TlsCertPath", mongoConfig.ClientTLSCertConfig.TlsCertPath, "TlsKeyPath", mongoConfig.ClientTLSCertConfig.TlsKeyPath)
 	isDocumentDBMode := envVar != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
-	fmt.Printf("DEBUG: constructMongoClientOptions isDocumentDBMode=%t\n", isDocumentDBMode)
+	slog.Info("DEBUG: constructMongoClientOptions", "isDocumentDBMode", isDocumentDBMode)
 	
 	var tlsConfig *tls.Config
 	
@@ -627,9 +628,13 @@ func constructMongoClientOptions(
 			SetServerSelectionTimeout(serverSelectionTimeout), nil
 	} else {
 		// Traditional MongoDB mode: Client certificates required, use X509 auth
+		fmt.Printf("=== DATASTORE PROVIDER ATTEMPTING TO LOAD CERTS ===\n")
+		fmt.Printf("=== DATASTORE PROVIDER TlsCertPath='%s' TlsKeyPath='%s' ===\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+		fmt.Printf("=== DATASTORE PROVIDER envVar='%s' isDocumentDBMode=%t ===\n", envVar, isDocumentDBMode)
 		clientCert, err := tls.LoadX509KeyPair(mongoConfig.ClientTLSCertConfig.TlsCertPath,
 			mongoConfig.ClientTLSCertConfig.TlsKeyPath)
 		if err != nil {
+			fmt.Printf("=== DATASTORE PROVIDER ERROR LOADING CERTS: %v ===\n", err)
 			return nil, fmt.Errorf("failed to load client certificate and key: %w", err)
 		}
 

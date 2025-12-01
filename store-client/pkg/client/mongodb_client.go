@@ -703,6 +703,8 @@ func (c *MongoDBClient) Ping(ctx context.Context) error {
 // NewChangeStreamWatcher creates a new change stream watcher using the existing implementation
 func (c *MongoDBClient) NewChangeStreamWatcher(ctx context.Context, tokenConfig TokenConfig,
 	pipeline interface{}) (ChangeStreamWatcher, error) {
+	fmt.Println("=== MONGODB_CLIENT NewChangeStreamWatcher CALLED ===")
+	fmt.Printf("=== tokenConfig: %+v ===\n", tokenConfig)
 	// Convert to the existing configuration format
 	mongoConfig := mongoWatcher.MongoDBConfig{
 		URI:        c.config.GetConnectionURI(),
@@ -712,23 +714,27 @@ func (c *MongoDBClient) NewChangeStreamWatcher(ctx context.Context, tokenConfig 
 		// For DocumentDB mode, only set CA cert path, not client cert paths
 		ClientTLSCertConfig: func() mongoWatcher.MongoDBClientTLSCertConfig {
 			envVar := os.Getenv("MONGODB_CA_CERT_PATH")
-			fmt.Printf("DEBUG: NewChangeStreamWatcher MONGODB_CA_CERT_PATH='%s'\n", envVar)
+			fmt.Printf("=== MONGODB_CLIENT MONGODB_CA_CERT_PATH='%s' ===\n", envVar)
 			if envVar != "" {
 				// DocumentDB mode: Only CA certificate needed
-				fmt.Printf("DEBUG: NewChangeStreamWatcher using DocumentDB mode (empty cert paths)\n")
-				return mongoWatcher.MongoDBClientTLSCertConfig{
+				fmt.Printf("=== MONGODB_CLIENT using DocumentDB mode (empty cert paths) ===\n")
+				config := mongoWatcher.MongoDBClientTLSCertConfig{
 					TlsCertPath: "", // No client certificate for DocumentDB
 					TlsKeyPath:  "", // No client key for DocumentDB  
 					CaCertPath:  c.config.GetCertConfig().GetCACertPath(),
 				}
+				fmt.Printf("=== MONGODB_CLIENT returning config: %+v ===\n", config)
+				return config
 			} else {
 				// Traditional MongoDB mode: All certificates needed
-				fmt.Printf("DEBUG: NewChangeStreamWatcher using traditional MongoDB mode\n")
-				return mongoWatcher.MongoDBClientTLSCertConfig{
+				fmt.Printf("=== MONGODB_CLIENT using traditional MongoDB mode ===\n")
+				config := mongoWatcher.MongoDBClientTLSCertConfig{
 					TlsCertPath: c.config.GetCertConfig().GetCertPath(),
 					TlsKeyPath:  c.config.GetCertConfig().GetKeyPath(),
 					CaCertPath:  c.config.GetCertConfig().GetCACertPath(),
 				}
+				fmt.Printf("=== MONGODB_CLIENT returning config: %+v ===\n", config)
+				return config
 			}
 		}(),
 		// Copy timeout settings from client (these should be available from config)
@@ -776,8 +782,10 @@ func (c *MongoDBClient) NewChangeStreamWatcher(ctx context.Context, tokenConfig 
 		).WithMetadata("actualType", fmt.Sprintf("%T", pipeline))
 	}
 
+	fmt.Printf("=== MONGODB_CLIENT calling mongoWatcher.NewChangeStreamWatcher with config: %+v ===\n", mongoConfig)
 	watcherInstance, err := mongoWatcher.NewChangeStreamWatcher(ctx, mongoConfig, storeTokenConfig, mongoPipeline)
 	if err != nil {
+		fmt.Printf("=== MONGODB_CLIENT mongoWatcher.NewChangeStreamWatcher ERROR: %v ===\n", err)
 		return nil, datastore.NewChangeStreamError(
 			datastore.ProviderMongoDB,
 			"failed to create change stream watcher",

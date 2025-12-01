@@ -466,6 +466,8 @@ func GetCollectionClient(
 func constructMongoClientOptions(
 	mongoConfig MongoDBConfig,
 ) (*options.ClientOptions, error) {
+	fmt.Println("=== STOREWATCHER constructMongoClientOptions CALLED ===")
+	fmt.Printf("=== TlsCertPath: %s, TlsKeyPath: %s ===\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
 	timeout := mongoConfig.TotalCACertTimeoutSeconds
 	if timeout == 0 {
 		timeout = 600 // 10 minutes by default
@@ -493,7 +495,11 @@ func constructMongoClientOptions(
 	}
 
 	// Check if we're in DocumentDB mode (only CA cert needed, no client certificates)
-	isDocumentDBMode := os.Getenv(config.EnvMongoDBCACertPath) != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
+	envVar := os.Getenv(config.EnvMongoDBCACertPath)
+	fmt.Printf("DEBUG: STOREWATCHER constructMongoClientOptions MONGODB_CA_CERT_PATH='%s'\n", envVar)
+	fmt.Printf("DEBUG: STOREWATCHER constructMongoClientOptions TlsCertPath='%s' TlsKeyPath='%s'\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+	isDocumentDBMode := envVar != "" && mongoConfig.ClientTLSCertConfig.TlsCertPath == "" && mongoConfig.ClientTLSCertConfig.TlsKeyPath == ""
+	fmt.Printf("DEBUG: STOREWATCHER constructMongoClientOptions isDocumentDBMode=%t\n", isDocumentDBMode)
 	
 	var tlsConfig *tls.Config
 	var credential options.Credential
@@ -512,9 +518,13 @@ func constructMongoClientOptions(
 		return options.Client().ApplyURI(mongoConfig.URI).SetTLSConfig(tlsConfig), nil
 	} else {
 		// Traditional MongoDB mode: Client certificates required, use X509 auth
+		fmt.Printf("=== STOREWATCHER ATTEMPTING TO LOAD CERTS ===\n")
+		fmt.Printf("=== STOREWATCHER TlsCertPath='%s' TlsKeyPath='%s' ===\n", mongoConfig.ClientTLSCertConfig.TlsCertPath, mongoConfig.ClientTLSCertConfig.TlsKeyPath)
+		fmt.Printf("=== STOREWATCHER envVar='%s' isDocumentDBMode=%t ===\n", envVar, isDocumentDBMode)
 		clientCert, err := tls.LoadX509KeyPair(mongoConfig.ClientTLSCertConfig.TlsCertPath,
 			mongoConfig.ClientTLSCertConfig.TlsKeyPath)
 		if err != nil {
+			fmt.Printf("=== STOREWATCHER ERROR LOADING CERTS: %v ===\n", err)
 			return nil, fmt.Errorf("failed to load client certificate and key: %w", err)
 		}
 
