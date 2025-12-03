@@ -170,6 +170,16 @@ func (c *FaultRemediationClient) GetStatusChecker() *crstatus.CRStatusChecker {
 	return c.statusChecker
 }
 
+// selectTemplateForAction returns the appropriate template filename based on the recommended action
+func (c *FaultRemediationClient) selectTemplateForAction(action protos.RecommendedAction) string {
+	switch action {
+	case protos.RecommendedAction_CONTACT_SUPPORT, protos.RecommendedAction_REPLACE_VM:
+		return "datacenterremediation-template.yaml"
+	default:
+		return c.templateData.TemplateFileName
+	}
+}
+
 func (c *FaultRemediationClient) CreateMaintenanceResource(
 	ctx context.Context,
 	healthEventData *HealthEventData,
@@ -197,14 +207,32 @@ func (c *FaultRemediationClient) CreateMaintenanceResource(
 		return false, ""
 	}
 
-	log.Printf("Creating RebootNode CR for node: %s (UID: %s)", healthEvent.NodeName, node.UID)
+	// Select appropriate template based on recommended action
+	templateFilename := c.selectTemplateForAction(healthEvent.RecommendedAction)
+	log.Printf("Creating maintenance CR for node: %s (UID: %s) using template: %s", healthEvent.NodeName, node.UID, templateFilename)
+	
 	c.templateData.NodeName = healthEvent.NodeName
 	c.templateData.RecommendedAction = healthEvent.RecommendedAction
 	c.templateData.HealthEventID = healthEventID
 
+	// Load and parse the selected template
+	templatePath := filepath.Join(c.templateData.TemplateMountPath, templateFilename)
+	templateContent, err := os.ReadFile(templatePath)
+	if err != nil {
+		slog.Error("Failed to read template file", "path", templatePath, "error", err)
+		return false, ""
+	}
+
+	tmpl := template.New("maintenance")
+	tmpl, err = tmpl.Parse(string(templateContent))
+	if err != nil {
+		slog.Error("Failed to parse template", "path", templatePath, "error", err)
+		return false, ""
+	}
+
 	// Execute the template
 	var buf bytes.Buffer
-	if err := c.template.Execute(&buf, c.templateData); err != nil {
+	if err := tmpl.Execute(&buf, c.templateData); err != nil {
 		slog.Error("Failed to execute maintenance template", "error", err)
 		return false, ""
 	}
